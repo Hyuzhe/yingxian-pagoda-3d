@@ -1,0 +1,1923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>应县木塔 · INTERACTIVE 3D MODEL | 辽·清宁二年 1056</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-parchment: #F4EFE6;
+            --bg-panel: rgba(247, 243, 234, 0.90);
+            --ink-dark: #221E1D;
+            --ink-muted: #6E655F;
+            --cinnabar: #9E2A2B;
+            --gold-accent: #B68D40;
+            --grid-line: rgba(110, 101, 95, 0.12);
+            --border-line: rgba(34, 30, 29, 0.18);
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-parchment);
+            color: var(--ink-dark);
+            font-family: 'Noto Serif SC', serif;
+        }
+
+        .font-mono-tech {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* 建筑测绘图纸网格背景 */
+        .blueprint-bg {
+            background-color: var(--bg-parchment);
+            background-image: 
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(rgba(110, 101, 95, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(110, 101, 95, 0.05) 1px, transparent 1px);
+            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+        }
+
+        /* 图纸外框装饰线 */
+        .drafting-frame {
+            pointer-events: none;
+            position: fixed;
+            inset: 8px;
+            border: 1.5px solid var(--border-line);
+            z-index: 40;
+        }
+        .drafting-frame::before {
+            content: '';
+            position: absolute;
+            inset: 3px;
+            border: 0.5px solid rgba(34, 30, 29, 0.1);
+        }
+
+        /* 3D 标注点样式 */
+        .marker-3d {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            cursor: pointer;
+            transition: opacity 0.25s ease, transform 0.2s ease;
+            z-index: 15;
+        }
+        .marker-3d:hover {
+            transform: translate(-50%, -50%) scale(1.08);
+            z-index: 25;
+        }
+        .marker-dot {
+            width: 10px;
+            height: 10px;
+            background: var(--cinnabar);
+            border: 2px solid #FFF;
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px rgba(158, 42, 43, 0.25);
+            position: relative;
+        }
+        .marker-line {
+            position: absolute;
+            left: 10px;
+            top: 4px;
+            width: 22px;
+            height: 1px;
+            background: var(--ink-dark);
+            transform-origin: left center;
+        }
+        .marker-tag {
+            margin-left: 28px;
+            margin-top: -14px;
+            background: rgba(244, 239, 230, 0.94);
+            border: 1px solid var(--ink-dark);
+            border-left: 3px solid var(--cinnabar);
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.08);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* 自定义滑块 */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            width: 100%;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 4px;
+            background: rgba(34, 30, 29, 0.2);
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: var(--cinnabar);
+            border: 2px solid #F4EFE6;
+            margin-top: -5px;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        /* 按钮激活态 */
+        .btn-draft {
+            border: 1px solid var(--border-line);
+            background: rgba(255, 252, 245, 0.75);
+            color: var(--ink-dark);
+            transition: all 0.15s ease;
+        }
+        .btn-draft:hover {
+            border-color: var(--ink-dark);
+            background: rgba(255, 252, 245, 0.95);
+        }
+        .btn-draft.active {
+            background: var(--cinnabar);
+            color: #FFF;
+            border-color: var(--cinnabar);
+        }
+        .btn-draft-dark.active {
+            background: var(--ink-dark);
+            color: #F4EFE6;
+            border-color: var(--ink-dark);
+        }
+
+        /* 滚动条微调 */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(34, 30, 29, 0.2);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="blueprint-bg relative select-none">
+
+    <!-- 建筑图纸装饰外框 -->
+    <div class="drafting-frame hidden sm:block">
+        <div class="absolute top-1 left-2 font-mono-tech text-[9px] text-[#6E655F] tracking-widest">DWG NO. YX-1056-SHANXI // SCALE 1:200</div>
+        <div class="absolute top-1 right-2 font-mono-tech text-[9px] text-[#6E655F] tracking-widest">39°33′55″N 113°10′55″E · WOODEN PAGODA</div>
+        <div class="absolute bottom-1 left-2 font-mono-tech text-[9px] text-[#6E655F] tracking-widest">STRUCTURAL SURVEY: OCTAGONAL 5-STORY 6-EAVE (9 LEVELS INTERNAL)</div>
+        <div class="absolute bottom-1 right-2 font-mono-tech text-[9px] text-[#6E655F] tracking-widest">LIAO DYNASTY · 67.31M HEIGHT</div>
+    </div>
+
+    <!-- 3D 渲染容器 -->
+    <div id="canvas-container" class="fixed inset-0 w-full h-full z-0"></div>
+
+    <!-- 3D 空间关键部位标注层 -->
+    <div id="markers-container" class="fixed inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <!-- 顶部标题栏 (图纸签章风格) -->
+    <header class="fixed top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-30 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+        <div class="pointer-events-auto bg-[#F4EFE6]/90 backdrop-blur-md border border-[#221E1D]/25 px-3.5 py-2.5 sm:px-5 sm:py-3 shadow-sm rounded-sm flex items-center gap-3.5">
+            <!-- 传统印章标识 -->
+            <div class="w-10 h-10 sm:w-11 sm:h-11 bg-[#9E2A2B] text-[#F4EFE6] flex flex-col items-center justify-center font-bold text-xs leading-tight border border-[#7A1C1D] shadow-inner shrink-0 rounded-sm">
+                <span>释迦</span>
+                <span>木塔</span>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base sm:text-xl font-black tracking-wider text-[#221E1D]">应县木塔 · INTERACTIVE 3D MODEL</h1>
+                </div>
+                <p class="text-[11px] sm:text-xs text-[#6E655F] tracking-widest font-medium mt-0.5">
+                    辽·清宁二年 1056 · 佛宫寺释迦塔 <span class="hidden md:inline font-mono-tech text-[10px] ml-2 text-[#9E2A2B]">[外观五层六檐 · 实为明五暗四九层]</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- 顶部快捷状态与声音/风效开关 -->
+        <div class="pointer-events-auto flex items-center gap-1.5 bg-[#F4EFE6]/90 backdrop-blur-md border border-[#221E1D]/20 p-1.5 rounded-sm shadow-sm">
+            <button id="btn-toggle-markers" class="btn-draft active px-2.5 py-1 text-xs font-medium rounded-sm flex items-center gap-1" title="显示/隐藏关键部位标注">
+                <span class="w-2 h-2 rounded-full bg-[#9E2A2B] inline-block"></span>
+                <span>引线标注</span>
+            </button>
+            <button id="btn-toggle-chime" class="btn-draft px-2.5 py-1 text-xs font-medium rounded-sm flex items-center gap-1" title="开启微风与48角铁马风铃声">
+                <span>🔔 风铃声</span>
+            </button>
+            <button id="btn-toggle-blueprint-mobile" class="lg:hidden btn-draft px-2.5 py-1 text-xs font-medium rounded-sm">
+                <span>📐 测绘图纸</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 标注详情弹窗 (点击 3D 标注点时展示) -->
+    <div id="callout-card" class="fixed top-24 left-3 sm:left-6 z-30 w-72 sm:w-80 bg-[#F7F3EA]/95 backdrop-blur-md border border-[#221E1D] shadow-lg p-3.5 rounded-sm transition-all duration-200 opacity-0 pointer-events-none -translate-y-2">
+        <div class="flex items-center justify-between border-b border-[#221E1D]/15 pb-2 mb-2">
+            <div class="flex items-center gap-2">
+                <span id="callout-code" class="font-mono-tech text-[10px] px-1.5 py-0.5 bg-[#9E2A2B] text-white rounded-sm">01</span>
+                <h3 id="callout-title" class="font-bold text-sm text-[#221E1D]">铁制塔刹</h3>
+            </div>
+            <button id="callout-close" class="text-xs text-[#6E655F] hover:text-[#221E1D] px-1">✕</button>
+        </div>
+        <p id="callout-desc" class="text-xs text-[#4A433E] leading-relaxed mb-2"></p>
+        <div id="callout-meta" class="font-mono-tech text-[10px] text-[#9E2A2B] bg-[#9E2A2B]/10 px-2 py-1 rounded-sm"></div>
+    </div>
+
+    <!-- 右侧建筑测绘图纸面板 (平立面图 + 尺寸标注) -->
+    <aside id="blueprint-panel" class="fixed right-3 top-20 bottom-24 w-80 xl:w-96 z-20 bg-[#F7F3EA]/92 backdrop-blur-md border border-[#221E1D]/25 shadow-md rounded-sm flex flex-col transition-transform duration-300 translate-x-[110%] lg:translate-x-0 pointer-events-auto">
+        <!-- 面板头部切换 -->
+        <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-[#221E1D]/15 bg-[#EDE5D8]/60">
+            <div class="flex items-center gap-1.5">
+                <span class="font-mono-tech text-[11px] font-bold text-[#9E2A2B]">ARCH-DWG</span>
+                <span class="text-xs font-bold tracking-wider">建筑测绘平立面图</span>
+            </div>
+            <div class="flex gap-1">
+                <button data-tab="elevation" class="dwg-tab-btn btn-draft-dark active text-[11px] px-2 py-0.5 rounded-sm">正/侧立面</button>
+                <button data-tab="plan" class="dwg-tab-btn btn-draft-dark text-[11px] px-2 py-0.5 rounded-sm">八角平面</button>
+                <button data-tab="data" class="dwg-tab-btn btn-draft-dark text-[11px] px-2 py-0.5 rounded-sm">营造参数</button>
+            </div>
+        </div>
+
+        <!-- 面板内容区 -->
+        <div class="flex-1 overflow-y-auto p-3 relative">
+            <!-- 1. 立面测绘图 (SVG) -->
+            <div id="dwg-tab-elevation" class="dwg-tab-content h-full flex flex-col justify-between">
+                <div class="text-[11px] text-[#6E655F] flex justify-between items-center mb-1 font-mono-tech">
+                    <span>SOUTH / EAST ELEVATION</span>
+                    <span>UNIT: METER (m)</span>
+                </div>
+                <div class="flex-1 flex items-center justify-center bg-[#F4EFE6]/70 border border-[#221E1D]/10 rounded-sm p-2">
+                    <svg viewBox="0 0 320 430" class="w-full h-full max-h-[380px]">
+                        <defs>
+                            <pattern id="smallGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+                                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(110,101,95,0.1)" stroke-width="0.5"/>
+                            </pattern>
+                        </defs>
+                        <rect width="320" height="430" fill="url(#smallGrid)" />
+
+                        <!-- 标高基准线与左侧总尺寸标注 -->
+                        <g stroke="#9E2A2B" stroke-width="0.8" fill="#9E2A2B" font-family="JetBrains Mono" font-size="8">
+                            <!-- 总高线 67.31m -->
+                            <line x1="28" y1="18" x2="28" y2="395" />
+                            <line x1="23" y1="18" x2="55" y2="18" />
+                            <line x1="23" y1="395" x2="55" y2="395" />
+                            <text x="10" y="210" transform="rotate(-90 14,210)" text-anchor="middle" font-weight="bold">TOTAL HEIGHT 67.31m</text>
+
+                            <!-- 分段标高：塔刹 14.21m -->
+                            <line x1="50" y1="18" x2="50" y2="95" />
+                            <line x1="46" y1="95" x2="110" y2="95" stroke-dasharray="2,2" />
+                            <text x="54" y="60">刹 14.21m</text>
+
+                            <!-- 塔身 51.10m -->
+                            <line x1="50" y1="95" x2="50" y2="372" />
+                            <line x1="46" y1="372" x2="80" y2="372" stroke-dasharray="2,2" />
+                            <text x="54" y="235">塔身 ~48.7m</text>
+
+                            <!-- 台基 4.4m -->
+                            <line x1="50" y1="372" x2="50" y2="395" />
+                            <text x="54" y="387">台基 4.4m</text>
+                        </g>
+
+                        <!-- 木塔正立面精密线稿 -->
+                        <g stroke="#221E1D" stroke-width="1" fill="none" transform="translate(175, 0)">
+                            <!-- 中心轴线 -->
+                            <line x1="0" y1="10" x2="0" y2="405" stroke="#9E2A2B" stroke-width="0.6" stroke-dasharray="6,3,1,3" />
+
+                            <!-- 铁刹 (18 -> 95) -->
+                            <line x1="0" y1="18" x2="0" y2="95" stroke-width="1.8" />
+                            <circle cx="0" cy="26" r="2.5" fill="#9E2A2B" />
+                            <path d="M-4,35 Q0,39 4,35" />
+                            <!-- 相轮 -->
+                            <ellipse cx="0" cy="46" rx="5" ry="1.5" />
+                            <ellipse cx="0" cy="51" rx="5.5" ry="1.5" />
+                            <ellipse cx="0" cy="56" rx="6" ry="1.5" />
+                            <ellipse cx="0" cy="61" rx="6.5" ry="1.5" />
+                            <ellipse cx="0" cy="66" rx="7" ry="1.5" />
+                            <ellipse cx="0" cy="71" rx="7.5" ry="1.5" />
+                            <!-- 覆钵与砖座 -->
+                            <path d="M-10,82 Q0,72 10,82 L12,95 L-12,95 Z" fill="rgba(34,30,29,0.12)" />
+                            <!-- 八根铁链 -->
+                            <line x1="-6" y1="38" x2="-46" y2="117" stroke-width="0.5" stroke-dasharray="2,1" />
+                            <line x1="6" y1="38" x2="46" y2="117" stroke-width="0.5" stroke-dasharray="2,1" />
+
+                            <!-- 五层 (顶层攒尖) -->
+                            <path d="M-12,95 L-48,118 L48,118 L12,95 Z" fill="rgba(158,42,43,0.1)" />
+                            <path d="M-52,116 Q-48,119 -42,118 L42,118 Q48,119 52,116" stroke-width="1.5" />
+                            <!-- 五层柱身与平座 -->
+                            <rect x="-32" y="118" width="64" height="24" fill="rgba(244,239,230,0.8)" />
+                            <line x1="-20" y1="118" x2="-20" y2="142" />
+                            <line x1="20" y1="118" x2="20" y2="142" />
+                            <rect x="-36" y="142" width="72" height="10" fill="rgba(182,141,64,0.2)" />
+
+                            <!-- 四层屋檐与塔身 -->
+                            <path d="M-36,152 L-56,166 L56,166 L36,152 Z" fill="rgba(158,42,43,0.1)" />
+                            <path d="M-60,164 Q-54,167 -48,166 L48,166 Q54,167 60,164" stroke-width="1.5" />
+                            <rect x="-36" y="166" width="72" height="26" fill="rgba(244,239,230,0.8)" />
+                            <line x1="-22" y1="166" x2="-22" y2="192" />
+                            <line x1="22" y1="166" x2="22" y2="192" />
+                            <rect x="-40" y="192" width="80" height="11" fill="rgba(182,141,64,0.2)" />
+
+                            <!-- 三层屋檐与塔身 -->
+                            <path d="M-40,203 L-63,218 L63,218 L40,203 Z" fill="rgba(158,42,43,0.1)" />
+                            <path d="M-67,216 Q-60,219 -54,218 L54,218 Q60,219 67,216" stroke-width="1.5" />
+                            <rect x="-41" y="218" width="82" height="28" fill="rgba(244,239,230,0.8)" />
+                            <line x1="-25" y1="218" x2="-25" y2="246" />
+                            <line x1="25" y1="218" x2="25" y2="246" />
+                            <rect x="-45" y="246" width="90" height="12" fill="rgba(182,141,64,0.2)" />
+
+                            <!-- 二层屋檐与塔身 -->
+                            <path d="M-45,258 L-70,274 L70,274 L45,258 Z" fill="rgba(158,42,43,0.1)" />
+                            <path d="M-74,272 Q-68,275 -60,274 L60,274 Q68,275 74,272" stroke-width="1.5" />
+                            <rect x="-46" y="274" width="92" height="30" fill="rgba(244,239,230,0.8)" />
+                            <line x1="-28" y1="274" x2="-28" y2="304" />
+                            <line x1="28" y1="274" x2="28" y2="304" />
+                            <rect x="-50" y="304" width="100" height="13" fill="rgba(182,141,64,0.2)" />
+
+                            <!-- 一层上檐 + 副阶下檐 (重檐) -->
+                            <path d="M-50,317 L-78,334 L78,334 L50,317 Z" fill="rgba(158,42,43,0.12)" />
+                            <path d="M-82,332 Q-75,335 -68,334 L68,334 Q75,335 82,332" stroke-width="1.5" />
+                            <rect x="-52" y="334" width="104" height="10" />
+                            <!-- 副阶屋檐 -->
+                            <path d="M-52,344 L-88,358 L88,358 L52,344 Z" fill="rgba(158,42,43,0.16)" />
+                            <path d="M-92,356 Q-85,359 -78,358 L78,358 Q85,359 92,356" stroke-width="1.6" />
+                            <!-- 一层外槽檐柱 -->
+                            <rect x="-66" y="358" width="132" height="16" fill="rgba(244,239,230,0.9)" />
+                            <line x1="-45" y1="358" x2="-45" y2="374" />
+                            <line x1="-18" y1="358" x2="-18" y2="374" />
+                            <line x1="18" y1="358" x2="18" y2="374" />
+                            <line x1="45" y1="358" x2="45" y2="374" />
+
+                            <!-- 石砌两层阶基 -->
+                            <rect x="-82" y="374" width="164" height="9" fill="rgba(110,101,95,0.25)" />
+                            <rect x="-95" y="383" width="190" height="12" fill="rgba(110,101,95,0.35)" />
+                            <!-- 踏道 -->
+                            <polygon points="-22,374 22,374 28,395 -28,395" fill="rgba(244,239,230,0.9)" />
+                        </g>
+
+                        <!-- 右侧明层与暗层标注 -->
+                        <g font-family="Noto Serif SC" font-size="8.5" fill="#221E1D">
+                            <text x="255" y="133">五层 (明层)</text>
+                            <text x="255" y="150" fill="#9E2A2B">五层平座暗层</text>
+                            <text x="255" y="182">四层 (明层)</text>
+                            <text x="255" y="200" fill="#9E2A2B">四层平座暗层</text>
+                            <text x="255" y="235">三层 (明层)</text>
+                            <text x="255" y="254" fill="#9E2A2B">三层平座暗层</text>
+                            <text x="255" y="291">二层 (明层)</text>
+                            <text x="255" y="313" fill="#9E2A2B">二层平座暗层</text>
+                            <text x="255" y="352">一层重檐副阶</text>
+                        </g>
+
+                        <!-- 底部底层直径标注 -->
+                        <g stroke="#221E1D" stroke-width="0.8" fill="#221E1D" font-family="JetBrains Mono" font-size="8.5">
+                            <line x1="109" y1="412" x2="241" y2="412" />
+                            <line x1="109" y1="374" x2="109" y2="416" stroke-dasharray="2,2" />
+                            <line x1="241" y1="374" x2="241" y2="416" stroke-dasharray="2,2" />
+                            <text x="175" y="423" text-anchor="middle" font-weight="bold">BASE DIAMETER 30.27m</text>
+                        </g>
+                    </svg>
+                </div>
+                <div class="mt-2 text-[11px] text-[#6E655F] leading-snug bg-[#EDE5D8]/70 p-2 rounded-sm border border-[#221E1D]/10">
+                    <span class="text-[#9E2A2B] font-bold">收分规制：</span>每层柱高与直径逐层递减，形成稳健柔美的八角锥体轮廓，塔高约等于底层满外直径的 <span class="font-mono-tech font-bold text-[#221E1D]">2.22</span> 倍。
+                </div>
+            </div>
+
+            <!-- 2. 一层八角平面图 (SVG) -->
+            <div id="dwg-tab-plan" class="dwg-tab-content hidden h-full flex flex-col justify-between">
+                <div class="text-[11px] text-[#6E655F] flex justify-between items-center mb-1 font-mono-tech">
+                    <span>1F OCTAGONAL PLAN (内外双槽柱网)</span>
+                    <span>Ø 30.27m</span>
+                </div>
+                <div class="flex-1 flex items-center justify-center bg-[#F4EFE6]/70 border border-[#221E1D]/10 rounded-sm p-2">
+                    <svg viewBox="0 0 300 300" class="w-full h-full max-h-[340px]">
+                        <rect width="300" height="300" fill="url(#smallGrid)" />
+                        <!-- 十字中心轴 -->
+                        <line x1="150" y1="15" x2="150" y2="285" stroke="#9E2A2B" stroke-width="0.6" stroke-dasharray="5,3" />
+                        <line x1="15" y1="150" x2="285" y2="150" stroke="#9E2A2B" stroke-width="0.6" stroke-dasharray="5,3" />
+
+                        <g transform="translate(150, 150)">
+                            <!-- 下层方形石阶基 -->
+                            <rect x="-112" y="-112" width="224" height="224" fill="rgba(110,101,95,0.08)" stroke="#6E655F" stroke-width="0.8" />
+                            <!-- 上层八角石基 -->
+                            <polygon points="43,-104 104,-43 104,43 43,104 -43,104 -104,43 -104,-43 -43,-104" fill="rgba(110,101,95,0.14)" stroke="#221E1D" stroke-width="1" />
+                            <!-- 副阶外檐柱网 (24柱) -->
+                            <polygon points="36,-86 86,-36 86,36 36,86 -36,86 -86,36 -86,-36 -36,-86" fill="none" stroke="#221E1D" stroke-width="0.8" stroke-dasharray="2,2" />
+                            <!-- 一层塔身外槽重墙 (八角厚土坯墙) -->
+                            <polygon points="28,-68 68,-28 68,28 28,68 -28,68 -68,28 -68,-28 -28,-68" fill="rgba(158,42,43,0.15)" stroke="#9E2A2B" stroke-width="3.5" />
+                            <!-- 内槽八角柱网 (8根内柱) -->
+                            <polygon points="15,-36 36,-15 36,15 15,36 -15,36 -36,15 -36,-15 -15,-36" fill="rgba(182,141,64,0.18)" stroke="#221E1D" stroke-width="1.2" />
+                            <!-- 中央释迦牟尼大佛莲座 -->
+                            <circle cx="0" cy="0" r="18" fill="rgba(182,141,64,0.35)" stroke="#9E2A2B" stroke-width="1.2" />
+                            <circle cx="0" cy="0" r="7" fill="#9E2A2B" />
+
+                            <!-- 八角角柱点位示意 -->
+                            <g fill="#221E1D">
+                                <circle cx="36" cy="-86" r="2.5"/><circle cx="86" cy="-36" r="2.5"/><circle cx="86" cy="36" r="2.5"/><circle cx="36" cy="86" r="2.5"/>
+                                <circle cx="-36" cy="86" r="2.5"/><circle cx="-86" cy="36" r="2.5"/><circle cx="-86" cy="-36" r="2.5"/><circle cx="-36" cy="-86" r="2.5"/>
+                                <circle cx="15" cy="-36" r="2.5" fill="#9E2A2B"/><circle cx="36" cy="-15" r="2.5" fill="#9E2A2B"/><circle cx="36" cy="15" r="2.5" fill="#9E2A2B"/><circle cx="15" cy="36" r="2.5" fill="#9E2A2B"/>
+                                <circle cx="-15" cy="36" r="2.5" fill="#9E2A2B"/><circle cx="-36" cy="15" r="2.5" fill="#9E2A2B"/><circle cx="-36" cy="-15" r="2.5" fill="#9E2A2B"/><circle cx="-15" cy="-36" r="2.5" fill="#9E2A2B"/>
+                            </g>
+                        </g>
+
+                        <!-- 尺寸标注 -->
+                        <g font-family="JetBrains Mono" font-size="8" fill="#221E1D" stroke="#221E1D" stroke-width="0.6">
+                            <line x1="64" y1="272" x2="236" y2="272" />
+                            <text x="150" y="282" text-anchor="middle" stroke="none" font-weight="bold">外槽直径 30.27m (副阶周匝)</text>
+                        </g>
+                    </svg>
+                </div>
+                <div class="mt-2 text-[11px] text-[#6E655F] leading-snug bg-[#EDE5D8]/70 p-2 rounded-sm border border-[#221E1D]/10">
+                    <span class="text-[#9E2A2B] font-bold">双槽筒体结构：</span>采用《营造法式》经典「金箱斗底槽」内外双环柱网，内槽供奉十一米高释迦牟尼金身坐像，外槽与副阶形成回廊。
+                </div>
+            </div>
+
+            <!-- 3. 营造参数与名匾考据 -->
+            <div id="dwg-tab-data" class="dwg-tab-content hidden space-y-2.5 text-xs">
+                <div class="bg-[#EDE5D8]/80 p-2.5 rounded-sm border border-[#221E1D]/15">
+                    <div class="font-bold text-[#9E2A2B] mb-1">结构核心数据 · TECHNICAL SPECS</div>
+                    <div class="grid grid-cols-2 gap-y-1.5 text-[11px]">
+                        <span class="text-[#6E655F]">建造年代：</span><span class="font-medium">辽清宁二年 (1056年)</span>
+                        <span class="text-[#6E655F]">建筑总高：</span><span class="font-mono-tech font-bold">67.31 m</span>
+                        <span class="text-[#6E655F]">底层直径：</span><span class="font-mono-tech font-bold">30.27 m</span>
+                        <span class="text-[#6E655F]">铁刹高度：</span><span class="font-mono-tech font-bold">14.21 m</span>
+                        <span class="text-[#6E655F]">结构层级：</span><span>明五暗四 (共九层)</span>
+                        <span class="text-[#6E655F]">斗拱种类：</span><span>全塔共计 <strong class="text-[#9E2A2B]">54种</strong> 铺作</span>
+                        <span class="text-[#6E655F]">耗用红松：</span><span>约 3000+ 立方米</span>
+                    </div>
+                </div>
+
+                <div class="bg-[#EDE5D8]/80 p-2.5 rounded-sm border border-[#221E1D]/15">
+                    <div class="font-bold text-[#9E2A2B] mb-1.5">南立面历代名匾 · HISTORICAL PLAQUES</div>
+                    <ul class="space-y-1 text-[11px]">
+                        <li class="flex justify-between"><span>五层檐下：</span><span class="font-bold">「峻极神工」 (明成祖朱棣御笔)</span></li>
+                        <li class="flex justify-between"><span>四层檐下：</span><span class="font-bold">「天下奇观」 (明武宗朱厚照题)</span></li>
+                        <li class="flex justify-between"><span>三层檐下：</span><span class="font-bold text-[#9E2A2B]">「释迦塔」 (金大定年间竖匾)</span></li>
+                        <li class="flex justify-between"><span>二层檐下：</span><span class="font-bold">「天宫高耸」 · 平座「正直」</span></li>
+                        <li class="flex justify-between"><span>一层重檐：</span><span class="font-bold">上檐「天柱地轴」· 下檐「万古观瞻」</span></li>
+                    </ul>
+                </div>
+
+                <div class="bg-[#EDE5D8]/80 p-2.5 rounded-sm border border-[#221E1D]/15">
+                    <div class="font-bold text-[#9E2A2B] mb-1">刚柔并济抗震体系</div>
+                    <p class="text-[11px] text-[#4A433E] leading-relaxed">
+                        全塔无一颗铁钉，纯靠榫卯咬合。四个平座暗层内设大量斜撑（叉手、托脚），构成刚性环梁；明层柱框与 54 种斗拱则形成柔性耗能层，历经大震与炮击而不倒。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 底部综合交互控制台 (爆炸拆解 / 分层聚焦 / 门窗勾栏开关 / 视角切换 / 材质与光照) -->
+    <section class="fixed bottom-3 left-3 right-3 sm:bottom-5 sm:left-6 sm:right-6 z-30 pointer-events-none flex flex-col gap-2">
+        <div class="pointer-events-auto bg-[#F7F3EA]/92 backdrop-blur-md border border-[#221E1D]/25 shadow-lg rounded-sm p-2.5 sm:p-3.5 max-w-5xl mx-auto w-full lg:mr-[21rem] xl:mr-[25rem]">
+            
+            <!-- 第一行：爆炸拆解滑块 + 构件细节微距开关 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center pb-2.5 border-b border-[#221E1D]/15">
+                <!-- 爆炸视图滑块 -->
+                <div class="md:col-span-5 flex items-center gap-2.5">
+                    <div class="shrink-0">
+                        <span class="text-xs font-bold text-[#9E2A2B] block leading-none">爆炸拆解</span>
+                        <span class="font-mono-tech text-[9px] text-[#6E655F]">EXPLODE VIEW</span>
+                    </div>
+                    <input id="slider-explode" type="range" min="0" max="100" value="0" class="flex-1">
+                    <span id="label-explode" class="font-mono-tech text-xs font-bold w-9 text-right">0%</span>
+                </div>
+
+                <!-- 构件交互按钮组 -->
+                <div class="md:col-span-7 flex flex-wrap items-center gap-1.5 justify-start md:justify-end">
+                    <button id="btn-doors" class="btn-draft px-2.5 py-1 text-xs font-medium rounded-sm flex items-center gap-1">
+                        <span>🚪 开启各层格扇门窗</span>
+                    </button>
+                    <button id="btn-highlight-pingzuo" class="btn-draft px-2.5 py-1 text-xs font-medium rounded-sm flex items-center gap-1">
+                        <span>🏮 凸显平座勾栏与斗拱</span>
+                    </button>
+                    <button id="btn-cutaway" class="btn-draft px-2.5 py-1 text-xs font-medium rounded-sm flex items-center gap-1" title="剖开南侧外檐以观察内部暗层斜撑与佛像">
+                        <span>🔍 暗层与内槽透视</span>
+                    </button>
+                    <button id="btn-wireframe" class="btn-draft px-2.5 py-1 text-xs font-medium rounded-sm">
+                        <span>🌐 线框</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 第二行：楼层特写选择 + 投影视角 + 材质/光影调节 -->
+            <div class="pt-2.5 flex flex-wrap items-center justify-between gap-2.5">
+                
+                <!-- 分层相机聚焦 -->
+                <div class="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 max-w-full">
+                    <span class="text-[11px] font-bold text-[#6E655F] mr-1 shrink-0">分层检视:</span>
+                    <button data-floor="all" class="floor-btn btn-draft active px-2 py-0.5 text-xs rounded-sm shrink-0">全塔</button>
+                    <button data-floor="base" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">台基</button>
+                    <button data-floor="f1" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">一层重檐</button>
+                    <button data-floor="f2" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">二层</button>
+                    <button data-floor="f3" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">三层</button>
+                    <button data-floor="f4" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">四层</button>
+                    <button data-floor="f5" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">五层</button>
+                    <button data-floor="steeple" class="floor-btn btn-draft px-2 py-0.5 text-xs rounded-sm shrink-0">铁刹</button>
+                </div>
+
+                <!-- 视图切换 (ISO / 正 / 侧 / 俯) -->
+                <div class="flex items-center gap-1">
+                    <span class="text-[11px] font-bold text-[#6E655F] mr-1">视图:</span>
+                    <button data-view="iso" class="view-btn btn-draft-dark active px-2 py-0.5 text-[11px] font-mono-tech rounded-sm">ISO</button>
+                    <button data-view="front" class="view-btn btn-draft-dark px-2 py-0.5 text-[11px] rounded-sm">正立面</button>
+                    <button data-view="side" class="view-btn btn-draft-dark px-2 py-0.5 text-[11px] rounded-sm">侧立面</button>
+                    <button data-view="top" class="view-btn btn-draft-dark px-2 py-0.5 text-[11px] rounded-sm">俯视</button>
+                </div>
+
+                <!-- 材质色彩与夕阳暖光微调 -->
+                <div class="flex items-center gap-3 border-l border-[#221E1D]/15 pl-3">
+                    <label class="flex items-center gap-1 text-[11px] font-medium cursor-pointer" title="调节木构颜色（红松朱漆 / 千年古檀）">
+                        <span>木构</span>
+                        <input type="color" id="color-wood" value="#7A2E21" class="w-4 h-4 rounded-sm border border-[#221E1D]/30 cursor-pointer bg-transparent">
+                    </label>
+                    <label class="flex items-center gap-1 text-[11px] font-medium cursor-pointer" title="调节布瓦与琉璃瓦面颜色">
+                        <span>瓦垄</span>
+                        <input type="color" id="color-tile" value="#3F4447" class="w-4 h-4 rounded-sm border border-[#221E1D]/30 cursor-pointer bg-transparent">
+                    </label>
+                    <label class="flex items-center gap-1 text-[11px] font-medium cursor-pointer" title="调节铁制塔刹光泽颜色">
+                        <span>塔刹</span>
+                        <input type="color" id="color-metal" value="#382C26" class="w-4 h-4 rounded-sm border border-[#221E1D]/30 cursor-pointer bg-transparent">
+                    </label>
+                    <div class="flex items-center gap-1.5 w-24" title="夕阳倾角与色温调节">
+                        <span class="text-[11px]">🌅夕照</span>
+                        <input id="slider-sun" type="range" min="8" max="75" value="24">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        /**
+         * 应县木塔（佛宫寺释迦塔）全程序化 3D 建筑生成与交互系统
+         * 严格还原：八角平面、五层六檐、四层平座暗层、斗拱群、勾栏、格扇门窗、名匾、翼角起翘、瓦垄、铁刹与48风铃
+         */
+        window.onload = function () {
+            const container = document.getElementById('canvas-container');
+            const markersContainer = document.getElementById('markers-container');
+
+            // ==========================================
+            // 1. 场景、相机与渲染器初始化
+            // ==========================================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0xF4EFE6, 0.0028);
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const perspCamera = new THREE.PerspectiveCamera(38, aspect, 0.5, 500);
+            perspCamera.position.set(0, 26, 92);
+
+            const frustumSize = 78;
+            const orthoCamera = new THREE.OrthographicCamera(
+                -frustumSize * aspect / 2, frustumSize * aspect / 2,
+                frustumSize / 2, -frustumSize / 2,
+                -200, 500
+            );
+
+            let activeCamera = perspCamera;
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.08;
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
+            controls.target.set(0, 28, 0);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.06;
+            controls.maxPolarAngle = Math.PI / 2 + 0.06;
+            controls.minDistance = 14;
+            controls.maxDistance = 190;
+            controls.update();
+
+            // ==========================================
+            // 2. 夕阳暖光与柔和阴影系统
+            // ==========================================
+            const hemiLight = new THREE.HemisphereLight(0xFFF3E0, 0xD7C4A5, 0.68);
+            hemiLight.position.set(0, 80, 0);
+            scene.add(hemiLight);
+
+            const sunLight = new THREE.DirectionalLight(0xFFB26B, 1.45);
+            sunLight.position.set(55, 36, 65);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 10;
+            sunLight.shadow.camera.far = 220;
+            const d = 48;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d + 15;
+            sunLight.shadow.camera.bottom = -d + 10;
+            sunLight.shadow.bias = -0.0005;
+            scene.add(sunLight);
+
+            // 背光补光（凸显斗拱与飞檐暗部层次）
+            const rimLight = new THREE.DirectionalLight(0x90A8C0, 0.42);
+            rimLight.position.set(-50, 30, -50);
+            scene.add(rimLight);
+
+            // ==========================================
+            // 3. 材质库定义（支持实时调色与线框切换）
+            // ==========================================
+            const materials = {
+                woodPrimary: new THREE.MeshStandardMaterial({ color: 0x7A2E21, roughness: 0.72, metalness: 0.06 }),
+                woodDark: new THREE.MeshStandardMaterial({ color: 0x562017, roughness: 0.78, metalness: 0.05 }),
+                woodRailing: new THREE.MeshStandardMaterial({ color: 0x8C3728, roughness: 0.68, metalness: 0.08 }),
+                woodWall: new THREE.MeshStandardMaterial({ color: 0x8B281F, roughness: 0.85, metalness: 0.02 }),
+                woodStructural: new THREE.MeshStandardMaterial({ color: 0xA87C51, roughness: 0.75, metalness: 0.05 }), // 内部暗层斜撑原木色
+                tileGrey: new THREE.MeshStandardMaterial({ color: 0x3F4447, roughness: 0.62, metalness: 0.16 }),
+                tileGlazeTrim: new THREE.MeshStandardMaterial({ color: 0x2F5B4E, roughness: 0.35, metalness: 0.25 }), // 绿色琉璃剪边
+                stoneBase: new THREE.MeshStandardMaterial({ color: 0xD2C6B2, roughness: 0.88, metalness: 0.03 }),
+                stoneDark: new THREE.MeshStandardMaterial({ color: 0xB5A792, roughness: 0.9, metalness: 0.04 }),
+                metalSteeple: new THREE.MeshStandardMaterial({ color: 0x382C26, roughness: 0.38, metalness: 0.78 }),
+                goldStatue: new THREE.MeshStandardMaterial({ color: 0xD4AF37, roughness: 0.28, metalness: 0.85 }),
+                windowPaper: new THREE.MeshStandardMaterial({ color: 0xEFE6D5, roughness: 0.9, side: THREE.DoubleSide })
+            };
+
+            // 动态生成古建牌匾纹理
+            function createPlaqueTexture(text, isVertical = false, bgColor = '#1E2738', borderColor = '#C99E48', textColor = '#F2D078') {
+                const canvas = document.createElement('canvas');
+                canvas.width = isVertical ? 128 : 256;
+                canvas.height = isVertical ? 256 : 96;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = bgColor;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 6;
+                ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
+
+                ctx.fillStyle = textColor;
+                ctx.font = 'bold 42px "Noto Serif SC", serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                if (isVertical) {
+                    const chars = text.split('');
+                    const step = (canvas.height - 56) / chars.length;
+                    chars.forEach((ch, idx) => {
+                        ctx.fillText(ch, canvas.width / 2, 36 + step * idx + step / 2);
+                    });
+                } else {
+                    // 传统从右至左书写效果
+                    const reversed = text.split('').reverse().join(' ');
+                    ctx.fillText(reversed, canvas.width / 2, canvas.height / 2 + 2);
+                }
+
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.needsUpdate = true;
+                return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.2 });
+            }
+
+            // ==========================================
+            // 4. 几何体构造工具函数
+            // ==========================================
+            // 创建正八边形柱体/台体（边正面朝向正南 +Z，即旋转 22.5 度）
+            function createOctagonPrism(rTop, rBottom, height, mat, yOffset = 0) {
+                const geo = new THREE.CylinderGeometry(rTop, rBottom, height, 8, 1);
+                geo.rotateY(Math.PI / 8);
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = yOffset;
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                return mesh;
+            }
+
+            // 存储可拆解层级、门窗铰链、风铃、暗层外墙
+            const explodableLayers = [];
+            const doorPivots = [];
+            const windChimes = [];
+            const cutawayMeshes = [];
+
+            const pagodaRoot = new THREE.Group();
+            scene.add(pagodaRoot);
+
+            // 地面测绘圆环与阴影接收面
+            const groundGeo = new THREE.PlaneGeometry(260, 260);
+            groundGeo.rotateX(-Math.PI / 2);
+            const groundMat = new THREE.ShadowMaterial({ opacity: 0.22 });
+            const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+
+            // 地面建筑测绘刻度环
+            const ringGroup = new THREE.Group();
+            [16, 22, 30].forEach((r, idx) => {
+                const ringGeo = new THREE.RingGeometry(r - 0.08, r + 0.08, 64);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x8A7F75, transparent: true, opacity: idx === 1 ? 0.35 : 0.18, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.y = 0.02;
+                ringGroup.add(ring);
+            });
+            scene.add(ringGroup);
+
+            // ==========================================
+            // 5. 程序化建造：第一部分 · 石砌两层阶基 (0m ~ 4.4m)
+            // ==========================================
+            const baseLayerGroup = new THREE.Group();
+            pagodaRoot.add(baseLayerGroup);
+            explodableLayers.push({ group: baseLayerGroup, baseY: 0, explodeWeight: 0 });
+
+            // 下层方形阶基
+            const sqBaseGeo = new THREE.BoxGeometry(34, 2.2, 34);
+            const sqBase = new THREE.Mesh(sqBaseGeo, materials.stoneDark);
+            sqBase.position.y = 1.1;
+            sqBase.castShadow = true;
+            sqBase.receiveShadow = true;
+            baseLayerGroup.add(sqBase);
+
+            // 上层八角阶基 (外接圆半径约 16.4m)
+            const octBase = createOctagonPrism(16.2, 16.6, 2.2, materials.stoneBase, 3.3);
+            baseLayerGroup.add(octBase);
+
+            // 台基束腰压栏石线脚
+            const trimBase = createOctagonPrism(16.5, 16.5, 0.28, materials.stoneDark, 4.35);
+            baseLayerGroup.add(trimBase);
+
+            // 南北东西四面踏道台阶
+            [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach((rot, idx) => {
+                const stairGroup = new THREE.Group();
+                const steps = 9;
+                for (let s = 0; s < steps; s++) {
+                    const stepH = 4.4 / steps;
+                    const stepW = idx === 0 ? 5.6 : 4.2;
+                    const stepGeo = new THREE.BoxGeometry(stepW, stepH, 0.55);
+                    const stepMesh = new THREE.Mesh(stepGeo, materials.stoneBase);
+                    stepMesh.position.set(0, (s + 0.5) * stepH, 15.2 + (steps - s) * 0.42);
+                    stepMesh.castShadow = true;
+                    stepMesh.receiveShadow = true;
+                    stairGroup.add(stepMesh);
+                }
+                stairGroup.rotation.y = rot;
+                baseLayerGroup.add(stairGroup);
+            });
+
+            // ==========================================
+            // 6. 程序化核心组件：八角攒尖/坡屋顶 + 瓦垄 + 翼角起翘 + 风铃
+            // ==========================================
+            function createPagodaRoof(params) {
+                const {
+                    rInner,      // 屋檐内口外接圆半径
+                    rOuter,      // 屋檐外挑外接圆半径
+                    height,      // 屋面高度
+                    isTopRoof = false,
+                    eaveUpkick = 0.75 // 翼角起翘幅度
+                } = params;
+
+                const roofGroup = new THREE.Group();
+
+                // 1) 八角定制曲面屋顶网格（带缓和反宇曲线及翼角起翘）
+                const radialSegs = 8;
+                const ringSegs = 7;
+                const vertices = [];
+                const indices = [];
+
+                for (let j = 0; j <= ringSegs; j++) {
+                    const t = j / ringSegs; // 0: 内环(高), 1: 外檐(低)
+                    const r = THREE.MathUtils.lerp(rInner, rOuter, t);
+                    // 反宇下凹曲线
+                    const curveY = Math.pow(1 - t, 1.55) * height;
+
+                    for (let i = 0; i < radialSegs; i++) {
+                        // 使正八边形的平直边正对 Z 轴正方向（南向）
+                        const angle = (i / radialSegs) * Math.PI * 2 + Math.PI / 8;
+                        const x = Math.sin(angle) * r;
+                        const z = Math.cos(angle) * r;
+                        // 角部起翘：越靠近外檐，角部抬升越明显
+                        const cornerKick = Math.pow(t, 2.4) * eaveUpkick;
+                        const y = curveY + cornerKick;
+                        vertices.push(x, y, z);
+                    }
+                }
+
+                for (let j = 0; j < ringSegs; j++) {
+                    for (let i = 0; i < radialSegs; i++) {
+                        const nextI = (i + 1) % radialSegs;
+                        const a = j * radialSegs + i;
+                        const b = j * radialSegs + nextI;
+                        const c = (j + 1) * radialSegs + nextI;
+                        const d = (j + 1) * radialSegs + i;
+
+                        indices.push(a, d, b);
+                        indices.push(b, d, c);
+                    }
+                }
+
+                const roofGeo = new THREE.BufferGeometry();
+                roofGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                roofGeo.setIndex(indices);
+                roofGeo.computeVertexNormals();
+
+                const roofMesh = new THREE.Mesh(roofGeo, materials.tileGrey);
+                roofMesh.castShadow = true;
+                roofMesh.receiveShadow = true;
+                roofGroup.add(roofMesh);
+
+                // 屋面底部木飞椽衬底
+                const soffitGeo = roofGeo.clone();
+                const soffitMesh = new THREE.Mesh(soffitGeo, materials.woodDark);
+                soffitMesh.position.y = -0.18;
+                roofGroup.add(soffitMesh);
+
+                // 2) 八条垂脊 + 戗兽/走兽 + 辐射状瓦垄 + 翼角飞椽 + 铁马风铃
+                for (let i = 0; i < 8; i++) {
+                    const cornerAngle = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                    const nextCornerAngle = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+
+                    // 垂脊曲线构造
+                    const pStart = new THREE.Vector3(
+                        Math.sin(cornerAngle) * rInner,
+                        height,
+                        Math.cos(cornerAngle) * rInner
+                    );
+                    const pMid = new THREE.Vector3(
+                        Math.sin(cornerAngle) * ((rInner + rOuter) * 0.52),
+                        height * 0.34,
+                        Math.cos(cornerAngle) * ((rInner + rOuter) * 0.52)
+                    );
+                    const pEnd = new THREE.Vector3(
+                        Math.sin(cornerAngle) * (rOuter + 0.35),
+                        eaveUpkick + 0.22,
+                        Math.cos(cornerAngle) * (rOuter + 0.35)
+                    );
+
+                    const ridgeCurve = new THREE.QuadraticBezierCurve3(pStart, pMid, pEnd);
+                    const ridgeGeo = new THREE.TubeGeometry(ridgeCurve, 12, 0.16, 6, false);
+                    const ridgeMesh = new THREE.Mesh(ridgeGeo, materials.tileGrey);
+                    ridgeMesh.castShadow = true;
+                    roofGroup.add(ridgeMesh);
+
+                    // 翼角琉璃脊兽装饰
+                    const beastGeo = new THREE.BoxGeometry(0.24, 0.38, 0.24);
+                    const beastMesh = new THREE.Mesh(beastGeo, materials.tileGlazeTrim);
+                    beastMesh.position.copy(pEnd).add(new THREE.Vector3(0, 0.2, 0));
+                    roofGroup.add(beastMesh);
+
+                    // 翼角老角梁与仔角梁外挑
+                    const beamDir = new THREE.Vector3(Math.sin(cornerAngle), 0, Math.cos(cornerAngle));
+                    const cornerBeamGeo = new THREE.BoxGeometry(0.22, 0.26, 2.2);
+                    const cornerBeam = new THREE.Mesh(cornerBeamGeo, materials.woodPrimary);
+                    cornerBeam.position.set(
+                        beamDir.x * (rOuter - 0.5),
+                        eaveUpkick * 0.45,
+                        beamDir.z * (rOuter - 0.5)
+                    );
+                    cornerBeam.lookAt(pEnd.x, eaveUpkick, pEnd.z);
+                    roofGroup.add(cornerBeam);
+
+                    // 翼角悬挂的风铃（铁马）
+                    const chimePivot = new THREE.Group();
+                    chimePivot.position.set(
+                        Math.sin(cornerAngle) * (rOuter + 0.25),
+                        eaveUpkick - 0.05,
+                        Math.cos(cornerAngle) * (rOuter + 0.25)
+                    );
+                    // 挂线
+                    const wireGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.55, 4);
+                    wireGeo.translate(0, -0.275, 0);
+                    const wireMesh = new THREE.Mesh(wireGeo, materials.metalSteeple);
+                    chimePivot.add(wireMesh);
+                    // 钟罩与风铎叶片
+                    const bellGeo = new THREE.ConeGeometry(0.16, 0.32, 6);
+                    bellGeo.translate(0, -0.55, 0);
+                    const bellMesh = new THREE.Mesh(bellGeo, materials.metalSteeple);
+                    chimePivot.add(bellMesh);
+                    const leafGeo = new THREE.BoxGeometry(0.14, 0.25, 0.02);
+                    leafGeo.translate(0, -0.82, 0);
+                    const leafMesh = new THREE.Mesh(leafGeo, materials.goldStatue);
+                    chimePivot.add(leafMesh);
+
+                    roofGroup.add(chimePivot);
+                    windChimes.push({
+                        pivot: chimePivot,
+                        phase: i * 0.8 + rOuter * 0.5
+                    });
+
+                    // 每一个扇面上的瓦垄条纹 (筒瓦垄)
+                    const ribsCount = 9;
+                    for (let k = 1; k < ribsCount; k++) {
+                        const frac = k / ribsCount;
+                        const sIn = new THREE.Vector3(
+                            THREE.MathUtils.lerp(Math.sin(cornerAngle) * rInner, Math.sin(nextCornerAngle) * rInner, frac),
+                            height,
+                            THREE.MathUtils.lerp(Math.cos(cornerAngle) * rInner, Math.cos(nextCornerAngle) * rInner, frac)
+                        );
+                        const sOut = new THREE.Vector3(
+                            THREE.MathUtils.lerp(Math.sin(cornerAngle) * rOuter, Math.sin(nextCornerAngle) * rOuter, frac),
+                            eaveUpkick * Math.pow(Math.abs(frac - 0.5) * 2, 2),
+                            THREE.MathUtils.lerp(Math.cos(cornerAngle) * rOuter, Math.cos(nextCornerAngle) * rOuter, frac)
+                        );
+                        const sMid = new THREE.Vector3().lerpVectors(sIn, sOut, 0.52);
+                        sMid.y = height * 0.34;
+
+                        const ribCurve = new THREE.QuadraticBezierCurve3(sIn, sMid, sOut);
+                        const ribGeo = new THREE.TubeGeometry(ribCurve, 7, 0.055, 4, false);
+                        const ribMesh = new THREE.Mesh(ribGeo, materials.tileGrey);
+                        roofGroup.add(ribMesh);
+                    }
+                }
+
+                // 如果不是顶层攒尖顶，在屋面内圈加一圈围脊
+                if (!isTopRoof && rInner > 0.5) {
+                    const innerRidge = createOctagonPrism(rInner + 0.15, rInner + 0.2, 0.35, materials.tileGrey, height);
+                    roofGroup.add(innerRidge);
+                }
+
+                return roofGroup;
+            }
+
+            // ==========================================
+            // 7. 程序化核心组件：斗拱铺作群 (柱头铺作、补间铺作、转角铺作)
+            // ==========================================
+            function createDougongCluster(scale = 1) {
+                const dg = new THREE.Group();
+                // 栌斗 (大斗)
+                const ludou = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.26, 0.46), materials.woodDark);
+                dg.add(ludou);
+                // 第一跳华拱与泥道拱
+                const gong1 = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.2, 0.85), materials.woodPrimary);
+                gong1.position.y = 0.22;
+                dg.add(gong1);
+                // 第二跳出跳华拱与令拱、耍头
+                const gong2 = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.22, 1.35), materials.woodRailing);
+                gong2.position.set(0, 0.44, 0.18);
+                dg.add(gong2);
+                // 昂嘴斜出 (下昂)
+                const ang = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 1.65), materials.woodDark);
+                ang.position.set(0, 0.36, 0.35);
+                ang.rotation.x = 0.32;
+                dg.add(ang);
+
+                dg.scale.setScalar(scale);
+                return dg;
+            }
+
+            // 沿正八边形环绕排布斗拱铺作层 (转角8朵 + 每面补间与柱头铺作)
+            function createOctagonDougongRing(radius, yPos, scale = 1, setsPerFace = 4) {
+                const ringGroup = new THREE.Group();
+                ringGroup.position.y = yPos;
+
+                for (let i = 0; i < 8; i++) {
+                    const a1 = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                    const a2 = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+                    const p1 = new THREE.Vector3(Math.sin(a1) * radius, 0, Math.cos(a1) * radius);
+                    const p2 = new THREE.Vector3(Math.sin(a2) * radius, 0, Math.cos(a2) * radius);
+                    const faceNormalAngle = ((i + 0.5) / 8) * Math.PI * 2 + Math.PI / 8;
+
+                    for (let k = 0; k < setsPerFace; k++) {
+                        const frac = k / setsPerFace;
+                        const pos = new THREE.Vector3().lerpVectors(p1, p2, frac);
+                        const cluster = createDougongCluster(k === 0 ? scale * 1.12 : scale);
+                        cluster.position.copy(pos);
+                        cluster.rotation.y = k === 0 ? a1 : faceNormalAngle;
+                        ringGroup.add(cluster);
+                    }
+                }
+                return ringGroup;
+            }
+
+            // ==========================================
+            // 8. 程序化核心组件：平座勾栏 (望柱、寻杖、华板、地栿)
+            // ==========================================
+            function createPingzuoBalcony(radius, yPos) {
+                const balGroup = new THREE.Group();
+                balGroup.position.y = yPos;
+
+                // 平座出跳挑梁底盘
+                const deck = createOctagonPrism(radius + 0.25, radius - 0.35, 0.36, materials.woodDark, 0);
+                balGroup.add(deck);
+
+                const railH = 1.05;
+                for (let i = 0; i < 8; i++) {
+                    const a1 = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                    const a2 = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+                    const p1 = new THREE.Vector3(Math.sin(a1) * radius, 0.18, Math.cos(a1) * radius);
+                    const p2 = new THREE.Vector3(Math.sin(a2) * radius, 0.18, Math.cos(a2) * radius);
+                    const sideLen = p1.distanceTo(p2);
+                    const mid = new THREE.Vector3().lerpVectors(p1, p2, 0.5);
+                    const faceAngle = ((i + 0.5) / 8) * Math.PI * 2 + Math.PI / 8;
+
+                    const faceRail = new THREE.Group();
+                    faceRail.position.copy(mid);
+                    faceRail.rotation.y = faceAngle;
+
+                    // 寻杖 (顶栏杆) & 地栿 (底栏杆)
+                    const topBar = new THREE.Mesh(new THREE.BoxGeometry(sideLen, 0.12, 0.14), materials.woodRailing);
+                    topBar.position.y = railH;
+                    faceRail.add(topBar);
+
+                    const midPanel = new THREE.Mesh(new THREE.BoxGeometry(sideLen - 0.2, 0.42, 0.06), materials.woodPrimary);
+                    midPanel.position.y = railH * 0.45;
+                    faceRail.add(midPanel);
+
+                    // 望柱 (每面5根)
+                    const postCount = 5;
+                    for (let p = 0; p <= postCount; p++) {
+                        const px = -sideLen / 2 + (p / postCount) * sideLen;
+                        const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, railH + 0.22, 0.14), materials.woodRailing);
+                        post.position.set(px, (railH + 0.22) / 2, 0);
+                        faceRail.add(post);
+                    }
+
+                    balGroup.add(faceRail);
+                }
+                return balGroup;
+            }
+
+            // ==========================================
+            // 9. 程序化建造：五层明层 + 四层平座暗层 + 副阶重檐
+            // ==========================================
+            // 应县木塔各层精准比例配置表
+            const storiesConfig = [
+                {
+                    level: 1,
+                    name: '一层重檐与副阶',
+                    baseY: 4.4,
+                    pingzuoH: 0,           // 一层坐于台基之上，无平座
+                    bodyH: 6.4,            // 一层塔身柱高
+                    rCore: 10.6,           // 一层塔身厚墙外接半径
+                    rCorridor: 13.9,       // 一层副阶外檐柱半径
+                    rRoofOuter: 15.6,      // 一层上檐半径
+                    rSubRoofOuter: 18.2,   // 一层下层副阶屋檐半径
+                    roofH: 3.1,
+                    plaqueTop: '天柱地轴',
+                    plaqueSub: '万古观瞻',
+                    explodeWeight: 1.0
+                },
+                {
+                    level: 2,
+                    name: '二层（含平座暗层）',
+                    baseY: 13.9,
+                    pingzuoH: 2.3,
+                    bodyH: 4.5,
+                    rCore: 9.8,
+                    rBalcony: 11.4,
+                    rRoofOuter: 14.3,
+                    roofH: 2.7,
+                    plaqueTop: '天宫高耸',
+                    plaquePingzuo: '正直',
+                    explodeWeight: 2.2
+                },
+                {
+                    level: 3,
+                    name: '三层（含平座暗层）',
+                    baseY: 23.4,
+                    pingzuoH: 2.1,
+                    bodyH: 4.2,
+                    rCore: 9.1,
+                    rBalcony: 10.6,
+                    rRoofOuter: 13.3,
+                    roofH: 2.5,
+                    plaqueTop: '释迦塔',
+                    isVerticalPlaque: true,
+                    explodeWeight: 3.4
+                },
+                {
+                    level: 4,
+                    name: '四层（含平座暗层）',
+                    baseY: 32.2,
+                    pingzuoH: 1.9,
+                    bodyH: 3.8,
+                    rCore: 8.4,
+                    rBalcony: 9.8,
+                    rRoofOuter: 12.3,
+                    roofH: 2.3,
+                    plaqueTop: '天下奇观',
+                    explodeWeight: 4.6
+                },
+                {
+                    level: 5,
+                    name: '五层（含平座暗层与八角攒尖顶）',
+                    baseY: 40.2,
+                    pingzuoH: 1.8,
+                    bodyH: 3.5,
+                    rCore: 7.7,
+                    rBalcony: 9.0,
+                    rRoofOuter: 11.4,
+                    roofH: 4.8,
+                    isTopRoof: true,
+                    plaqueTop: '峻极神工',
+                    explodeWeight: 5.8
+                }
+            ];
+
+            const pingzuoHighlightTargets = [];
+
+            storiesConfig.forEach((cfg) => {
+                // 每一层拆分为：平座暗层组（若有）+ 明层塔身与屋檐组，使爆炸视图能清晰看到「明五暗四」
+                let currentLocalY = 0;
+
+                // --- A. 平座暗层 (2~5层) ---
+                if (cfg.pingzuoH > 0) {
+                    const pingzuoGroup = new THREE.Group();
+                    pingzuoGroup.position.y = cfg.baseY;
+                    pagodaRoot.add(pingzuoGroup);
+                    explodableLayers.push({
+                        group: pingzuoGroup,
+                        baseY: cfg.baseY,
+                        explodeWeight: cfg.explodeWeight - 0.55
+                    });
+
+                    // 暗层外围八角井干/壁板 (南向两面加入可透视列表)
+                    for (let i = 0; i < 8; i++) {
+                        const a1 = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                        const a2 = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+                        const p1 = new THREE.Vector3(Math.sin(a1) * cfg.rCore, cfg.pingzuoH / 2, Math.cos(a1) * cfg.rCore);
+                        const p2 = new THREE.Vector3(Math.sin(a2) * cfg.rCore, cfg.pingzuoH / 2, Math.cos(a2) * cfg.rCore);
+                        const w = p1.distanceTo(p2);
+                        const mid = new THREE.Vector3().lerpVectors(p1, p2, 0.5);
+                        const faceAngle = ((i + 0.5) / 8) * Math.PI * 2 + Math.PI / 8;
+
+                        const wallPanel = new THREE.Mesh(new THREE.BoxGeometry(w, cfg.pingzuoH, 0.35), materials.woodDark);
+                        wallPanel.position.copy(mid);
+                        wallPanel.rotation.y = faceAngle;
+                        pingzuoGroup.add(wallPanel);
+                        if (i === 7 || i === 0) cutawayMeshes.push(wallPanel);
+
+                        // 暗层内部刚性抗震斜撑（叉手与托脚桁架结构）
+                        const brace1 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.85, 0.22, 0.22), materials.woodStructural);
+                        brace1.position.copy(mid).multiplyScalar(0.92);
+                        brace1.position.y = cfg.pingzuoH * 0.5;
+                        brace1.rotation.y = faceAngle;
+                        brace1.rotation.z = 0.42;
+                        pingzuoGroup.add(brace1);
+
+                        const brace2 = brace1.clone();
+                        brace2.rotation.z = -0.42;
+                        pingzuoGroup.add(brace2);
+                    }
+
+                    // 平座斗拱铺作层
+                    const pzDougong = createOctagonDougongRing(cfg.rCore + 0.2, cfg.pingzuoH * 0.48, 0.92, 4);
+                    pingzuoGroup.add(pzDougong);
+                    pingzuoHighlightTargets.push(pzDougong);
+
+                    // 平座勾栏阳台
+                    const balcony = createPingzuoBalcony(cfg.rBalcony, cfg.pingzuoH);
+                    pingzuoGroup.add(balcony);
+                    pingzuoHighlightTargets.push(balcony);
+
+                    // 二层平座下方的「正直」小匾
+                    if (cfg.plaquePingzuo) {
+                        const pqMat = createPlaqueTexture(cfg.plaquePingzuo, false, '#2A231F', '#B68D40', '#F0D58C');
+                        const pqMesh = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.75, 0.14), pqMat);
+                        pqMesh.position.set(0, cfg.pingzuoH * 0.55, cfg.rCore * Math.cos(Math.PI / 8) + 0.75);
+                        pingzuoGroup.add(pqMesh);
+                    }
+
+                    currentLocalY = cfg.pingzuoH;
+                }
+
+                // --- B. 明层塔身、门窗、内槽佛像与屋檐 ---
+                const storyGroup = new THREE.Group();
+                const storyStartY = cfg.baseY + currentLocalY;
+                storyGroup.position.y = storyStartY;
+                pagodaRoot.add(storyGroup);
+                explodableLayers.push({
+                    group: storyGroup,
+                    baseY: storyStartY,
+                    explodeWeight: cfg.explodeWeight
+                });
+
+                // 内槽八角柱网与中心礼佛空间
+                const innerRadius = cfg.rCore * 0.52;
+                const innerFloor = createOctagonPrism(cfg.rCore - 0.2, cfg.rCore - 0.2, 0.25, materials.woodDark, 0.12);
+                storyGroup.add(innerFloor);
+
+                // 每层中央塑像示意（一层为高大释迦牟尼金身坐像）
+                const lotus = createOctagonPrism(innerRadius * 0.55, innerRadius * 0.65, 0.7, materials.stoneDark, 0.45);
+                storyGroup.add(lotus);
+                const statueH = cfg.level === 1 ? 3.8 : 2.1;
+                const statueGeo = new THREE.ConeGeometry(innerRadius * 0.38, statueH, 8);
+                const statueMesh = new THREE.Mesh(statueGeo, materials.goldStatue);
+                statueMesh.position.y = 0.8 + statueH / 2;
+                storyGroup.add(statueMesh);
+                const haloGeo = new THREE.RingGeometry(innerRadius * 0.25, innerRadius * 0.52, 16);
+                const haloMesh = new THREE.Mesh(haloGeo, materials.goldStatue);
+                haloMesh.position.set(0, 0.9 + statueH * 0.65, -0.35);
+                storyGroup.add(haloMesh);
+
+                // 八个面的柱网、阑额、普拍枋、墙壁与可开合格扇门窗
+                for (let i = 0; i < 8; i++) {
+                    const a1 = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                    const a2 = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+                    const p1 = new THREE.Vector3(Math.sin(a1) * cfg.rCore, 0, Math.cos(a1) * cfg.rCore);
+                    const p2 = new THREE.Vector3(Math.sin(a2) * cfg.rCore, 0, Math.cos(a2) * cfg.rCore);
+                    const sideW = p1.distanceTo(p2);
+                    const mid = new THREE.Vector3().lerpVectors(p1, p2, 0.5);
+                    const faceAngle = ((i + 0.5) / 8) * Math.PI * 2 + Math.PI / 8;
+
+                    // 角柱 (带侧脚与生起意象)
+                    const colGeo = new THREE.CylinderGeometry(0.28, 0.32, cfg.bodyH, 10);
+                    const colMesh = new THREE.Mesh(colGeo, materials.woodPrimary);
+                    colMesh.position.set(p1.x, cfg.bodyH / 2, p1.z);
+                    colMesh.castShadow = true;
+                    storyGroup.add(colMesh);
+
+                    // 内槽角柱
+                    const inColMesh = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.24, 0.26, cfg.bodyH, 8),
+                        materials.woodPrimary
+                    );
+                    inColMesh.position.set(Math.sin(a1) * innerRadius, cfg.bodyH / 2, Math.cos(a1) * innerRadius);
+                    storyGroup.add(inColMesh);
+
+                    // 单面墙体与门窗总成
+                    const faceWallGroup = new THREE.Group();
+                    faceWallGroup.position.copy(mid);
+                    faceWallGroup.rotation.y = faceAngle;
+                    storyGroup.add(faceWallGroup);
+
+                    // 柱头阑额与普拍枋
+                    const beam = new THREE.Mesh(new THREE.BoxGeometry(sideW, 0.42, 0.42), materials.woodPrimary);
+                    beam.position.y = cfg.bodyH - 0.22;
+                    faceWallGroup.add(beam);
+
+                    // 明间平柱 (两根辅柱将每面分为三间：明间门/次间窗)
+                    [-sideW * 0.2, sideW * 0.2].forEach(cx => {
+                        const subCol = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, cfg.bodyH, 8), materials.woodPrimary);
+                        subCol.position.set(cx, cfg.bodyH / 2, 0);
+                        faceWallGroup.add(subCol);
+                    });
+
+                    // 次间墙体与直棂窗
+                    [-sideW * 0.36, sideW * 0.36].forEach(wx => {
+                        const bayW = sideW * 0.26;
+                        const wallBay = new THREE.Mesh(new THREE.BoxGeometry(bayW, cfg.bodyH - 0.4, 0.32), materials.woodWall);
+                        wallBay.position.set(wx, (cfg.bodyH - 0.4) / 2, 0);
+                        faceWallGroup.add(wallBay);
+
+                        // 直棂窗框
+                        const winFrame = new THREE.Mesh(new THREE.BoxGeometry(bayW * 0.68, cfg.bodyH * 0.36, 0.38), materials.woodRailing);
+                        winFrame.position.set(wx, cfg.bodyH * 0.52, 0);
+                        faceWallGroup.add(winFrame);
+
+                        if (i === 7) {
+                            cutawayMeshes.push(wallBay, winFrame);
+                        }
+                    });
+
+                    // 当心间（正中明间）：四扇可交互开启的格扇门
+                    const doorBayW = sideW * 0.36;
+                    const doorH = cfg.bodyH * 0.72;
+                    // 门楣上堵墙
+                    const topTransom = new THREE.Mesh(
+                        new THREE.BoxGeometry(doorBayW, cfg.bodyH - doorH - 0.4, 0.3),
+                        materials.woodWall
+                    );
+                    topTransom.position.set(0, doorH + (cfg.bodyH - doorH - 0.4) / 2, 0);
+                    faceWallGroup.add(topTransom);
+
+                    // 左右两扇对开门铰链
+                    const leafW = doorBayW * 0.48;
+                    const leftPivot = new THREE.Group();
+                    leftPivot.position.set(-doorBayW * 0.48, 0, 0.08);
+                    const rightPivot = new THREE.Group();
+                    rightPivot.position.set(doorBayW * 0.48, 0, 0.08);
+
+                    function buildLatticeDoorLeaf(offsetX) {
+                        const leaf = new THREE.Group();
+                        // 门边框与障水板
+                        const frame = new THREE.Mesh(new THREE.BoxGeometry(leafW, doorH, 0.1), materials.woodRailing);
+                        frame.position.set(offsetX, doorH / 2, 0);
+                        leaf.add(frame);
+                        // 上部格心窗纸
+                        const lattice = new THREE.Mesh(new THREE.BoxGeometry(leafW * 0.76, doorH * 0.52, 0.12), materials.windowPaper);
+                        lattice.position.set(offsetX, doorH * 0.64, 0);
+                        leaf.add(lattice);
+                        return leaf;
+                    }
+
+                    leftPivot.add(buildLatticeDoorLeaf(leafW / 2));
+                    rightPivot.add(buildLatticeDoorLeaf(-leafW / 2));
+                    faceWallGroup.add(leftPivot, rightPivot);
+
+                    doorPivots.push({ left: leftPivot, right: rightPivot });
+                }
+
+                // 一层特有的「副阶周匝」（外圈24根檐柱 + 副阶下檐）
+                if (cfg.level === 1) {
+                    for (let i = 0; i < 8; i++) {
+                        const a1 = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                        const a2 = ((i + 1) / 8) * Math.PI * 2 + Math.PI / 8;
+                        const p1 = new THREE.Vector3(Math.sin(a1) * cfg.rCorridor, 0, Math.cos(a1) * cfg.rCorridor);
+                        const p2 = new THREE.Vector3(Math.sin(a2) * cfg.rCorridor, 0, Math.cos(a2) * cfg.rCorridor);
+
+                        // 每面3段柱距
+                        for (let c = 0; c < 3; c++) {
+                            const cp = new THREE.Vector3().lerpVectors(p1, p2, c / 3);
+                            const eaveCol = new THREE.Mesh(
+                                new THREE.CylinderGeometry(0.24, 0.27, 4.1, 10),
+                                materials.woodPrimary
+                            );
+                            eaveCol.position.set(cp.x, 2.05, cp.z);
+                            eaveCol.castShadow = true;
+                            storyGroup.add(eaveCol);
+                        }
+                    }
+
+                    // 副阶柱头斗拱层
+                    const subDougong = createOctagonDougongRing(cfg.rCorridor, 3.8, 0.85, 4);
+                    storyGroup.add(subDougong);
+                    pingzuoHighlightTargets.push(subDougong);
+
+                    // 副阶下檐屋顶 (第六道屋檐)
+                    const subRoof = createPagodaRoof({
+                        rInner: cfg.rCore + 0.1,
+                        rOuter: cfg.rSubRoofOuter,
+                        height: 2.15,
+                        isTopRoof: false,
+                        eaveUpkick: 0.65
+                    });
+                    subRoof.position.y = 4.15;
+                    storyGroup.add(subRoof);
+
+                    // 一层下檐南向蓝底金字名匾「万古观瞻」
+                    const subPlaqueMat = createPlaqueTexture(cfg.plaqueSub, false, '#14325C', '#D4AF37', '#F7D774');
+                    const subPlaque = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.9, 0.15), subPlaqueMat);
+                    subPlaque.position.set(0, 3.65, cfg.rCorridor * Math.cos(Math.PI / 8) + 0.35);
+                    storyGroup.add(subPlaque);
+                }
+
+                // 本层上檐柱头与补间斗拱铺作层
+                const mainDougong = createOctagonDougongRing(cfg.rCore + 0.15, cfg.bodyH - 0.3, 1.05, 4);
+                storyGroup.add(mainDougong);
+                pingzuoHighlightTargets.push(mainDougong);
+
+                // 本层南向名匾
+                if (cfg.plaqueTop) {
+                    const isVert = Boolean(cfg.isVerticalPlaque);
+                    const pqMat = createPlaqueTexture(
+                        cfg.plaqueTop,
+                        isVert,
+                        isVert ? '#EBE4D4' : '#231F1E',
+                        '#B68D40',
+                        isVert ? '#1E1A18' : '#F2D078'
+                    );
+                    const pqW = isVert ? 1.35 : 2.75;
+                    const pqH = isVert ? 2.45 : 0.98;
+                    const pqMesh = new THREE.Mesh(new THREE.BoxGeometry(pqW, pqH, 0.16), pqMat);
+                    const zOut = cfg.rCore * Math.cos(Math.PI / 8) + 0.62;
+                    pqMesh.position.set(0, cfg.bodyH - (isVert ? 0.95 : 0.15), zOut);
+                    pqMesh.rotation.x = 0.12; // 牌匾微倾便于仰视
+                    storyGroup.add(pqMesh);
+                }
+
+                // 本层主屋檐
+                const mainRoof = createPagodaRoof({
+                    rInner: cfg.isTopRoof ? 0.95 : cfg.rCore - 0.8,
+                    rOuter: cfg.rRoofOuter,
+                    height: cfg.roofH,
+                    isTopRoof: cfg.isTopRoof,
+                    eaveUpkick: 0.78
+                });
+                mainRoof.position.y = cfg.bodyH + 0.25;
+                storyGroup.add(mainRoof);
+            });
+
+            // ==========================================
+            // 10. 程序化建造：铁制塔刹与八根铁链 (50.5m ~ 64.7m)
+            // ==========================================
+            const steepleGroup = new THREE.Group();
+            const steepleBaseY = 50.45;
+            steepleGroup.position.y = steepleBaseY;
+            pagodaRoot.add(steepleGroup);
+            explodableLayers.push({
+                group: steepleGroup,
+                baseY: steepleBaseY,
+                explodeWeight: 7.4
+            });
+
+            // 1) 八角砖砌刹座与仰莲座
+            const brickPedestal = createOctagonPrism(1.55, 1.85, 1.3, materials.tileGrey, 0.65);
+            steepleGroup.add(brickPedestal);
+            const lotusPedestal = createOctagonPrism(1.75, 1.35, 0.65, materials.metalSteeple, 1.55);
+            steepleGroup.add(lotusPedestal);
+
+            // 2) 覆钵 (铁制圆肚钵体)
+            const fuboGeo = new THREE.SphereGeometry(1.48, 24, 16);
+            fuboGeo.scale(1, 0.85, 1);
+            const fuboMesh = new THREE.Mesh(fuboGeo, materials.metalSteeple);
+            fuboMesh.position.y = 2.65;
+            fuboMesh.castShadow = true;
+            steepleGroup.add(fuboMesh);
+
+            // 3) 刹杆中心铁柱 (直贯顶部)
+            const spirePoleGeo = new THREE.CylinderGeometry(0.12, 0.28, 12.8, 12);
+            const spirePole = new THREE.Mesh(spirePoleGeo, materials.metalSteeple);
+            spirePole.position.y = 6.8;
+            steepleGroup.add(spirePole);
+
+            // 4) 相轮十三重 (逐层收分铁环)
+            for (let r = 0; r < 9; r++) {
+                const ringR = 1.28 - r * 0.065;
+                const wheelGeo = new THREE.TorusGeometry(ringR, 0.14, 10, 24);
+                wheelGeo.rotateX(Math.PI / 2);
+                const wheelMesh = new THREE.Mesh(wheelGeo, materials.metalSteeple);
+                wheelMesh.position.y = 4.1 + r * 0.52;
+                wheelMesh.castShadow = true;
+                steepleGroup.add(wheelMesh);
+            }
+
+            // 5) 圆光、仰月、宝盖、宝珠与宝瓶
+            const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.55, 16), materials.metalSteeple);
+            canopy.position.y = 9.2;
+            steepleGroup.add(canopy);
+
+            const crescentGeo = new THREE.TorusGeometry(0.68, 0.1, 8, 20, Math.PI * 1.15);
+            crescentGeo.rotateZ(Math.PI * 0.92);
+            const crescent = new THREE.Mesh(crescentGeo, materials.goldStatue);
+            crescent.position.y = 10.35;
+            steepleGroup.add(crescent);
+
+            const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), materials.goldStatue);
+            pearl.position.y = 11.15;
+            steepleGroup.add(pearl);
+
+            // 6) 八根防雷稳固铁链（从宝盖引至五层八个翼角）
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                const pTop = new THREE.Vector3(Math.sin(angle) * 0.9, 9.1, Math.cos(angle) * 0.9);
+                const pCorner = new THREE.Vector3(Math.sin(angle) * 11.2, -3.65, Math.cos(angle) * 11.2);
+                const pSag = new THREE.Vector3().lerpVectors(pTop, pCorner, 0.52);
+                pSag.y -= 0.9; // 悬链线下垂弧度
+
+                const chainCurve = new THREE.QuadraticBezierCurve3(pTop, pSag, pCorner);
+                const chainGeo = new THREE.TubeGeometry(chainCurve, 14, 0.035, 4, false);
+                const chainMesh = new THREE.Mesh(chainGeo, materials.metalSteeple);
+                steepleGroup.add(chainMesh);
+            }
+
+            // ==========================================
+            // 11. 夕阳微尘粒子氛围
+            // ==========================================
+            const particleCount = 180;
+            const particleGeo = new THREE.BufferGeometry();
+            const particlePos = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount; i++) {
+                particlePos[i * 3] = (Math.random() - 0.5) * 70;
+                particlePos[i * 3 + 1] = Math.random() * 68;
+                particlePos[i * 3 + 2] = (Math.random() - 0.5) * 70;
+            }
+            particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+            const particleMat = new THREE.PointsMaterial({
+                color: 0xE6A15C,
+                size: 0.35,
+                transparent: true,
+                opacity: 0.45
+            });
+            const dustParticles = new THREE.Points(particleGeo, particleMat);
+            scene.add(dustParticles);
+
+            // ==========================================
+            // 12. 3D 空间关键部位标注系统
+            // ==========================================
+            const calloutData = [
+                {
+                    code: '01',
+                    title: '铁制塔刹与八根铁链',
+                    pos: new THREE.Vector3(1.5, 57.5, 1.5),
+                    layerIdx: 6,
+                    desc: '塔刹高 14.21 米，由砖制仰莲座、铁制覆钵、相轮、露盘、仰月、宝珠组成。八根铁链牵引至五层翼角，兼具结构稳固与古代避雷针之妙用。',
+                    meta: 'ELEVATION: +50.4m ~ +67.31m // IRON & BRONZE'
+                },
+                {
+                    code: '02',
+                    title: '翼角起翘与铁马风铃',
+                    pos: new THREE.Vector3(8.5, 39.2, 8.5),
+                    layerIdx: 4,
+                    desc: '六层屋檐共 48 个翼角，由老角梁与仔角梁叠架挑出，起翘轻盈。每个翼角下悬挂铁马风铃，微风吹动清脆悠远。',
+                    meta: '48 CORNERS // RADIAL FLYING RAFTERS'
+                },
+                {
+                    code: '03',
+                    title: '五十四种斗拱铺作群',
+                    pos: new THREE.Vector3(-8.8, 29.2, 5.2),
+                    layerIdx: 3,
+                    desc: '全塔共用斗拱 54 种不同形制（双抄双下昂、单抄双下昂等），被称为「中国古建筑斗拱博物馆」，在地震中起到关键阻尼耗能作用。',
+                    meta: '54 DOUGONG TYPES // MORTISE & TENON'
+                },
+                {
+                    code: '04',
+                    title: '平座暗层与勾栏回廊',
+                    pos: new THREE.Vector3(7.6, 15.6, 7.6),
+                    layerIdx: 2,
+                    desc: '二至五层每层下部均设「平座暗层」，外部绕以勾栏凭栏远眺，内部隐藏圈梁、斜撑（叉手与托脚），形成刚性结构加强环。',
+                    meta: '4 HIDDEN MEZZANINE RINGS // RIGID TRUSS'
+                },
+                {
+                    code: '05',
+                    title: '一层副阶周匝（重檐）',
+                    pos: new THREE.Vector3(-11.8, 9.2, 11.2),
+                    layerIdx: 1,
+                    desc: '一层采用「副阶周匝」形制，在塔身外再加一圈回廊与下檐，构成壮观的重檐视觉，同时保护底层厚达一米余的土坯墙体。',
+                    meta: 'DOUBLE EAVES // OUTER CORRIDOR Ø30.27m'
+                },
+                {
+                    code: '06',
+                    title: '上下两层石砌阶基',
+                    pos: new THREE.Vector3(11.5, 2.5, 14.5),
+                    layerIdx: 0,
+                    desc: '高 4.4 米的坚实石砌台基，下层为方形、上层为八角形，四面设踏道，四角雕有辽代力士与角兽，承载全塔逾 7400 吨荷载。',
+                    meta: 'STONE PLATFORM // LOAD ~7,400 TONS'
+                }
+            ];
+
+            const markerElements = [];
+            const calloutCard = document.getElementById('callout-card');
+            const calloutCode = document.getElementById('callout-code');
+            const calloutTitle = document.getElementById('callout-title');
+            const calloutDesc = document.getElementById('callout-desc');
+            const calloutMeta = document.getElementById('callout-meta');
+
+            calloutData.forEach((item) => {
+                const el = document.createElement('div');
+                el.className = 'marker-3d';
+                el.innerHTML = `
+                    <div class="marker-dot"></div>
+                    <div class="marker-line"></div>
+                    <div class="marker-tag">
+                        <span class="font-mono-tech text-[9px] text-[#9E2A2B]">${item.code}</span>
+                        <span>${item.title}</span>
+                    </div>
+                `;
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    calloutCode.textContent = item.code;
+                    calloutTitle.textContent = item.title;
+                    calloutDesc.textContent = item.desc;
+                    calloutMeta.textContent = item.meta;
+                    calloutCard.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-2');
+                    // 相机平滑过渡观察该部位
+                    animateCameraTarget(
+                        new THREE.Vector3(0, item.pos.y, 0),
+                        new THREE.Vector3(item.pos.x * 2.5 + 12, item.pos.y + 5, item.pos.z * 2.5 + 22)
+                    );
+                });
+                markersContainer.appendChild(el);
+                markerElements.push({ el, data: item });
+            });
+
+            document.getElementById('callout-close').addEventListener('click', () => {
+                calloutCard.classList.add('opacity-0', 'pointer-events-none', '-translate-y-2');
+            });
+
+            // ==========================================
+            // 13. 交互控制逻辑 (爆炸视图、门窗开启、视角切换、材质与风铃声)
+            // ==========================================
+            let targetExplode = 0;
+            let currentExplode = 0;
+            let targetDoorOpen = 0;
+            let currentDoorOpen = 0;
+            let markersVisible = true;
+            let isPingzuoHighlighted = false;
+            let isCutaway = false;
+            let isWireframe = false;
+
+            // 1) 爆炸视图滑块
+            const sliderExplode = document.getElementById('slider-explode');
+            const labelExplode = document.getElementById('label-explode');
+            sliderExplode.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value, 10);
+                targetExplode = val / 100;
+                labelExplode.textContent = `${val}%`;
+            });
+
+            // 2) 开启/关闭各层格扇门窗
+            const btnDoors = document.getElementById('btn-doors');
+            btnDoors.addEventListener('click', () => {
+                targetDoorOpen = targetDoorOpen > 0.5 ? 0 : 1;
+                btnDoors.classList.toggle('active', targetDoorOpen > 0.5);
+                btnDoors.querySelector('span').textContent = targetDoorOpen > 0.5 ? '🚪 闭合各层格扇门窗' : '🚪 开启各层格扇门窗';
+            });
+
+            // 3) 凸显平座勾栏与斗拱铺作
+            const btnHighlightPingzuo = document.getElementById('btn-highlight-pingzuo');
+            btnHighlightPingzuo.addEventListener('click', () => {
+                isPingzuoHighlighted = !isPingzuoHighlighted;
+                btnHighlightPingzuo.classList.toggle('active', isPingzuoHighlighted);
+                materials.woodRailing.emissive.setHex(isPingzuoHighlighted ? 0x4A1208 : 0x000000);
+                if (isPingzuoHighlighted && targetExplode < 0.25) {
+                    targetExplode = 0.32;
+                    sliderExplode.value = 32;
+                    labelExplode.textContent = '32%';
+                }
+            });
+
+            // 4) 暗层斜撑与内槽透视开关
+            const btnCutaway = document.getElementById('btn-cutaway');
+            btnCutaway.addEventListener('click', () => {
+                isCutaway = !isCutaway;
+                btnCutaway.classList.toggle('active', isCutaway);
+                cutawayMeshes.forEach(m => {
+                    m.visible = !isCutaway;
+                });
+            });
+
+            // 5) 线框模式切换
+            const btnWireframe = document.getElementById('btn-wireframe');
+            btnWireframe.addEventListener('click', () => {
+                isWireframe = !isWireframe;
+                btnWireframe.classList.toggle('active', isWireframe);
+                Object.values(materials).forEach(mat => {
+                    mat.wireframe = isWireframe;
+                });
+            });
+
+            // 6) 标注引线开关
+            const btnToggleMarkers = document.getElementById('btn-toggle-markers');
+            btnToggleMarkers.addEventListener('click', () => {
+                markersVisible = !markersVisible;
+                btnToggleMarkers.classList.toggle('active', markersVisible);
+                markersContainer.style.display = markersVisible ? 'block' : 'none';
+            });
+
+            // 7) 移动端图纸面板展开/收起
+            const blueprintPanel = document.getElementById('blueprint-panel');
+            document.getElementById('btn-toggle-blueprint-mobile').addEventListener('click', () => {
+                blueprintPanel.classList.toggle('translate-x-[110%]');
+            });
+
+            // 8) 图纸面板内部 Tab 切换
+            document.querySelectorAll('.dwg-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.dwg-tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const tab = btn.getAttribute('data-tab');
+                    document.querySelectorAll('.dwg-tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById(`dwg-tab-${tab}`).classList.remove('hidden');
+                });
+            });
+
+            // 9) 相机平滑动画辅助
+            let camAnim = null;
+            function animateCameraTarget(newTarget, newPos) {
+                camAnim = {
+                    startTarget: controls.target.clone(),
+                    endTarget: newTarget.clone(),
+                    startPos: activeCamera.position.clone(),
+                    endPos: newPos.clone(),
+                    progress: 0
+                };
+            }
+
+            // 10) 分层特写聚焦按钮
+            const floorPresets = {
+                all: { target: [0, 29, 0], pos: [0, 26, 92] },
+                base: { target: [0, 2.5, 0], pos: [14, 7, 36] },
+                f1: { target: [0, 8.5, 0], pos: [16, 10, 34] },
+                f2: { target: [0, 17.5, 0], pos: [-15, 19, 30] },
+                f3: { target: [0, 26.8, 0], pos: [12, 28, 28] },
+                f4: { target: [0, 35.5, 0], pos: [-12, 37, 26] },
+                f5: { target: [0, 44.0, 0], pos: [11, 46, 25] },
+                steeple: { target: [0, 56.5, 0], pos: [10, 58, 22] }
+            };
+
+            document.querySelectorAll('.floor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.floor-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const key = btn.getAttribute('data-floor');
+                    const preset = floorPresets[key];
+                    if (preset) {
+                        const mult = 1 + currentExplode * 0.28;
+                        animateCameraTarget(
+                            new THREE.Vector3(preset.target[0], preset.target[1] * mult, preset.target[2]),
+                            new THREE.Vector3(preset.pos[0], preset.pos[1] * mult, preset.pos[2])
+                        );
+                    }
+                });
+            });
+
+            // 11) 视图切换 (ISO 透视 / 正立面 / 侧立面 / 俯视正交)
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const view = btn.getAttribute('data-view');
+
+                    if (view === 'iso') {
+                        activeCamera = perspCamera;
+                        controls.object = activeCamera;
+                        controls.enableRotate = true;
+                        animateCameraTarget(new THREE.Vector3(0, 29, 0), new THREE.Vector3(38, 32, 82));
+                    } else {
+                        activeCamera = orthoCamera;
+                        controls.object = activeCamera;
+                        orthoCamera.zoom = 1;
+                        orthoCamera.updateProjectionMatrix();
+
+                        if (view === 'front') {
+                            controls.target.set(0, 31, 0);
+                            orthoCamera.position.set(0, 31, 100);
+                        } else if (view === 'side') {
+                            controls.target.set(0, 31, 0);
+                            orthoCamera.position.set(100, 31, 0);
+                        } else if (view === 'top') {
+                            controls.target.set(0, 0, 0);
+                            orthoCamera.position.set(0, 140, 0.01);
+                        }
+                        controls.update();
+                    }
+                });
+            });
+
+            // 12) 材质色彩与夕阳角度实时调节
+            document.getElementById('color-wood').addEventListener('input', (e) => {
+                materials.woodPrimary.color.set(e.target.value);
+                materials.woodRailing.color.set(e.target.value).offsetHSL(0, 0.05, 0.05);
+            });
+            document.getElementById('color-tile').addEventListener('input', (e) => {
+                materials.tileGrey.color.set(e.target.value);
+            });
+            document.getElementById('color-metal').addEventListener('input', (e) => {
+                materials.metalSteeple.color.set(e.target.value);
+            });
+            document.getElementById('slider-sun').addEventListener('input', (e) => {
+                const deg = parseFloat(e.target.value);
+                const rad = THREE.MathUtils.degToRad(deg);
+                const dist = 85;
+                sunLight.position.set(Math.cos(rad) * dist * 0.75, Math.sin(rad) * dist, Math.cos(rad) * dist * 0.8);
+                // 角度越低夕阳越暖红
+                const warmth = 1 - (deg - 8) / 67;
+                sunLight.color.setHSL(0.07 - warmth * 0.03, 0.9, 0.62 - warmth * 0.08);
+            });
+
+            // 13) Web Audio API 程序化合成古塔铁马风铃声（无需外部音频文件）
+            let audioCtx = null;
+            let chimeEnabled = false;
+            let chimeTimer = null;
+
+            function playProceduralWindChime() {
+                if (!chimeEnabled) return;
+                try {
+                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                    // 中国传统五声宫商角徵羽高频泛音列
+                    const pentatonic = [1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 2093.0];
+                    const baseFreq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
+                    const now = audioCtx.currentTime;
+
+                    [1, 2.41, 3.85].forEach((ratio, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = idx === 0 ? 'sine' : 'triangle';
+                        osc.frequency.setValueAtTime(baseFreq * ratio, now);
+
+                        gain.gain.setValueAtTime(0.001, now);
+                        gain.gain.exponentialRampToValueAtTime(0.035 / (idx + 1), now + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.4 - idx * 0.5);
+
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now);
+                        osc.stop(now + 2.5);
+                    });
+                } catch (err) {
+                    // 忽略浏览器音频自动播放限制报错
+                }
+            }
+
+            const btnToggleChime = document.getElementById('btn-toggle-chime');
+            btnToggleChime.addEventListener('click', () => {
+                chimeEnabled = !chimeEnabled;
+                btnToggleChime.classList.toggle('active', chimeEnabled);
+                if (chimeEnabled) {
+                    playProceduralWindChime();
+                    chimeTimer = setInterval(() => {
+                        if (Math.random() > 0.35) playProceduralWindChime();
+                    }, 1800);
+                } else if (chimeTimer) {
+                    clearInterval(chimeTimer);
+                }
+            });
+
+            // ==========================================
+            // 14. 窗口尺寸自适应 (支持 9:16 竖屏手机与桌面宽屏)
+            // ==========================================
+            function handleResize() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                const asp = w / h;
+
+                perspCamera.aspect = asp;
+                // 针对 9:16 手机竖屏自动微调视场角，确保全塔完整呈现在画幅中央
+                perspCamera.fov = asp < 0.8 ? 50 : 38;
+                perspCamera.updateProjectionMatrix();
+
+                orthoCamera.left = -frustumSize * asp / 2;
+                orthoCamera.right = frustumSize * asp / 2;
+                orthoCamera.top = frustumSize / 2;
+                orthoCamera.bottom = -frustumSize / 2;
+                orthoCamera.updateProjectionMatrix();
+
+                renderer.setSize(w, h);
+            }
+            window.addEventListener('resize', handleResize);
+            handleResize();
+
+            // ==========================================
+            // 15. 主动画渲染循环
+            // ==========================================
+            const clock = new THREE.Clock();
+            const tempProjVec = new THREE.Vector3();
+
+            function animate() {
+                requestAnimationFrame(animate);
+                const elapsed = clock.getElapsedTime();
+
+                // 1) 平滑插值爆炸拆解高度
+                currentExplode += (targetExplode - currentExplode) * 0.08;
+                explodableLayers.forEach(item => {
+                    item.group.position.y = item.baseY + item.explodeWeight * currentExplode * 4.5;
+                });
+
+                // 2) 平滑插值各层格扇门开启角度
+                currentDoorOpen += (targetDoorOpen - currentDoorOpen) * 0.08;
+                const openAngle = currentDoorOpen * (Math.PI * 0.58);
+                doorPivots.forEach(pair => {
+                    pair.left.rotation.y = -openAngle;
+                    pair.right.rotation.y = openAngle;
+                });
+
+                // 3) 48个翼角铁马风铃随微风轻柔摆动
+                windChimes.forEach(chime => {
+                    chime.pivot.rotation.z = Math.sin(elapsed * 2.1 + chime.phase) * 0.11;
+                    chime.pivot.rotation.x = Math.cos(elapsed * 1.7 + chime.phase) * 0.08;
+                });
+
+                // 4) 夕阳浮尘缓慢飘动
+                dustParticles.rotation.y = elapsed * 0.015;
+
+                // 5) 相机聚焦过渡动画
+                if (camAnim) {
+                    camAnim.progress += 0.045;
+                    if (camAnim.progress >= 1) {
+                        controls.target.copy(camAnim.endTarget);
+                        activeCamera.position.copy(camAnim.endPos);
+                        camAnim = null;
+                    } else {
+                        const t = 1 - Math.pow(1 - camAnim.progress, 3);
+                        controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, t);
+                        activeCamera.position.lerpVectors(camAnim.startPos, camAnim.endPos, t);
+                    }
+                }
+
+                controls.update();
+
+                // 6) 更新 3D 空间关键部位标注点屏幕坐标
+                if (markersVisible) {
+                    const halfW = window.innerWidth / 2;
+                    const halfH = window.innerHeight / 2;
+
+                    markerElements.forEach(({ el, data }) => {
+                        tempProjVec.copy(data.pos);
+                        // 随爆炸视图同步抬升标注点高度
+                        tempProjVec.y += data.layerIdx * currentExplode * 4.2;
+                        tempProjVec.project(activeCamera);
+
+                        if (tempProjVec.z > 1) {
+                            el.style.opacity = '0';
+                            el.style.pointerEvents = 'none';
+                        } else {
+                            const sx = tempProjVec.x * halfW + halfW;
+                            const sy = -tempProjVec.y * halfH + halfH;
+                            el.style.left = `${sx}px`;
+                            el.style.top = `${sy}px`;
+                            el.style.opacity = '1';
+                            el.style.pointerEvents = 'auto';
+                        }
+                    });
+                }
+
+                renderer.render(scene, activeCamera);
+            }
+
+            animate();
+        };
+    </script>
+</body>
+</html>
