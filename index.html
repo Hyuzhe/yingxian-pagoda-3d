@@ -600,6 +600,7 @@
 
             const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
             controls.target.set(0, 28, 0);
+            window.__pagoda = { scene, perspCamera, controls };
             controls.enableDamping = true;
             controls.dampingFactor = 0.06;
             controls.maxPolarAngle = Math.PI / 2 + 0.06;
@@ -680,14 +681,19 @@
                         ctx.fillText(ch, canvas.width / 2, 36 + step * idx + step / 2);
                     });
                 } else {
-                    // 传统从右至左书写效果
-                    const reversed = text.split('').reverse().join(' ');
-                    ctx.fillText(reversed, canvas.width / 2, canvas.height / 2 + 2);
+                    // 按现代习惯从左至右书写（原先逆序绘制导致读作「工神极峻」）
+                    const spaced = text.split('').join(' ');
+                    ctx.fillText(spaced, canvas.width / 2, canvas.height / 2 + 2);
                 }
 
                 const tex = new THREE.CanvasTexture(canvas);
                 tex.needsUpdate = true;
-                return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.2 });
+                if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+                // 仅在朝外的 +Z 正面贴字；其余面（含会呈镜像的背面 -Z）用纯色
+                const face = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.2 });
+                const edge = new THREE.MeshStandardMaterial({ color: borderColor, roughness: 0.5, metalness: 0.3 });
+                const back = new THREE.MeshStandardMaterial({ color: bgColor, roughness: 0.6, metalness: 0.1 });
+                return [edge, edge, edge, edge, face, back];
             }
 
             // ==========================================
