@@ -600,7 +600,6 @@
 
             const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
             controls.target.set(0, 28, 0);
-            window.__pagoda = { scene, perspCamera, controls };
             controls.enableDamping = true;
             controls.dampingFactor = 0.06;
             controls.maxPolarAngle = Math.PI / 2 + 0.06;
@@ -681,9 +680,9 @@
                         ctx.fillText(ch, canvas.width / 2, 36 + step * idx + step / 2);
                     });
                 } else {
-                    // 按现代习惯从左至右书写（原先逆序绘制导致读作「工神极峻」）
-                    const spaced = text.split('').join(' ');
-                    ctx.fillText(spaced, canvas.width / 2, canvas.height / 2 + 2);
+                    // 传统从右至左书写：自左向右排为「工神极峻」，自右向左读为「峻极神工」
+                    const reversed = text.split('').reverse().join(' ');
+                    ctx.fillText(reversed, canvas.width / 2, canvas.height / 2 + 2);
                 }
 
                 const tex = new THREE.CanvasTexture(canvas);
